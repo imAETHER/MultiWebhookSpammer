@@ -5,19 +5,22 @@
 My multi-webhook spammer now made in Go with a simple UI!
 
 # Features
-* Manual Input
-  * Paste in multiple webhooks in a textbox and press <kbd>CTRL+S</kbd> to start spamming.
-* Load from file
-  * Load many webhooks from a file, each separated with a newline.
-* Live webhook status and info display
-  * Shows the status of the current webhooks with colors:
-    * 🔴 deleted/invalid
-    * 🟣 ratelimited
-    * 🟢 valid and alive
+
+- Manual Input
+  - Paste in multiple webhooks in a textbox and press <kbd>CTRL+S</kbd> to start spamming.
+- Load from file
+  - Load many webhooks from a file, each separated with a newline.
+- Live webhook status and info display
+  - Shows the status of the current webhooks with colors:
+    - 🔴 deleted/invalid
+    - 🟣 ratelimited
+    - 🟢 valid and alive
 
 ## TODO
+
 - [ ] Dynamic alignment
-- [ ] Spam Message customization
+- [x] Spam Message customization
 
 ## Known bugs
-* Webhooks are only stacked horizontally, will overflow if the window size is too small
+
+- Webhooks are only stacked horizontally, will overflow if the window size is too small

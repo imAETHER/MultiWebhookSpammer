@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	ScreenMain   int = 0
-	ScreenManual int = 1
-	ScreenSpam   int = 2
+	ScreenMain = iota
+	ScreenManual
+	ScreenSpam
 )
 
 var (
@@ -36,7 +36,8 @@ var (
 	colInfo    = termenv.Style{}.Foreground(color("8")).Styled
 	striked    = termenv.Style{}.CrossOut().Styled
 
-	webhooks = []Webhook{}
+	webhooks    = []Webhook{}
+	spamMessage *WebhookData
 
 	whFileExists = true
 	whFileData   string
@@ -122,11 +123,53 @@ type PModel struct {
 }
 
 func init() {
+	// Default message, for when reading message.json fails
+	spamMessage = &WebhookData{
+		Content: "@everyone",
+		Embeds: []WebhookEmbed{
+			{
+				Title:       "+ A E T H E R +",
+				Description: "Get spammed lol",
+				Image: WImage{
+					URL: "https://cdn.discordapp.com/attachments/1036756732497637506/1055141759459532800/Fj_KV71XEAQOfDl.jpg",
+				},
+				Footer: WFooter{
+					IconURL: "https://cdn.discordapp.com/attachments/832763964558802984/891043235915526195/IidUDunEiBNEoe.png",
+					Text:    "MWS by: github.com/imAETHER",
+				},
+				Color: 14194190,
+			},
+		},
+	}
+
+	mfile, err := os.OpenFile("message.json", os.O_RDWR|os.O_CREATE, fs.ModePerm)
+	if err != nil {
+		fmt.Println("Failed to read message.json!")
+	} else {
+		defer mfile.Close()
+
+		mb, err := io.ReadAll(mfile)
+		if err != nil {
+			panic(err)
+		}
+
+		if len(mb) < 10 { //why 10? idk
+			newone, _ := json.MarshalIndent(spamMessage, "", " ")
+			mfile.Write(newone)
+		} else {
+			err = json.Unmarshal(mb, spamMessage)
+			if err != nil {
+				fmt.Println("Failed to read unmarshal spam message data!")
+			}
+		}
+	}
+
 	wfile, err := os.OpenFile("webhooks.txt", os.O_RDWR, fs.ModePerm)
 	if err != nil {
 		whFileExists = false
 		return
 	}
+	defer wfile.Close()
 
 	b, err := io.ReadAll(wfile)
 	if err != nil {
@@ -142,13 +185,14 @@ func setupOptions() PModel {
 		choice2 = striked(choice2) + " Not found!"
 	}
 
+	// for ScreenManual
 	txtarea := textarea.New()
-
 	txtarea.SetHeight(11)
 	txtarea.SetWidth(130)
 	txtarea.CharLimit = 0
 	txtarea.Placeholder = "https://discord.com/api/webhooks..."
 
+	// for ScreenSpam
 	spin := spinner.New()
 	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 	spin.Spinner = spinner.Points
@@ -173,11 +217,7 @@ func executeWebhooks() {
 	for i := range webhooks {
 		go func(index int) {
 			for {
-				if len(webhooks) < index {
-					return
-				}
-
-				if !shouldSpam {
+				if !shouldSpam || len(webhooks) < index {
 					return
 				}
 
@@ -225,23 +265,7 @@ func executeWebhooks() {
 					webhook.Name = whinfo.Name
 				}
 
-				postBody, err := json.Marshal(WebhookData{
-					Content: "@everyone | Spammed by **Aether#2235**",
-					Embeds: []WebhookEmbed{
-						{
-							Title:       "+ A E T H E R +",
-							Description: "trolled",
-							Image: WImage{
-								URL: "https://cdn.discordapp.com/attachments/1036756732497637506/1055141759459532800/Fj_KV71XEAQOfDl.jpg",
-							},
-							Footer: WFooter{
-								IconURL: "https://cdn.discordapp.com/attachments/832763964558802984/891043235915526195/IidUDunEiBNEoe.png",
-								Text:    "MWS by: github.com/imAETHER",
-							},
-							Color: 14194190,
-						},
-					},
-				})
+				postBody, err := json.Marshal(spamMessage)
 				if err != nil {
 					return
 				}
@@ -404,8 +428,6 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	// Return the updated model to the Bubble Tea runtime for processing.
-	// Note that we're not returning a command.
 	return m, tea.Batch(cmds...)
 }
 
@@ -459,7 +481,7 @@ func (m PModel) View() string {
 				}
 			} else {
 				deadHooks++
-				secondary = append(secondary, whDeadModel.Render(fmt.Sprintf("%s\n%s\nSent: %d\nMissed: %d", "DELETED", wh.Name, wh.TotalSent, wh.TotalMissed)))
+				secondary = append(secondary, whDeadModel.Render(fmt.Sprintf("%s\n\n%s\nSent: %d\nMissed: %d", "DELETED", wh.Name, wh.TotalSent, wh.TotalMissed)))
 			}
 		}
 
