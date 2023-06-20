@@ -16,11 +16,7 @@ My multi-webhook spammer now made in Go with a simple UI!
     - 🟣 ratelimited
     - 🟢 valid and alive
 
-## TODO
+# Usage
 
-- [ ] Dynamic alignment
-- [x] Spam Message customization
-
-## Known bugs
-
-- Webhooks are only stacked horizontally, will overflow if the window size is too small
+Either input the tokens manually or add them each on a new line in `webhooks.txt`
+You can also customize the spam message by editing `message.json`

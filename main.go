@@ -23,6 +23,8 @@ const (
 	ScreenMain = iota
 	ScreenManual
 	ScreenSpam
+
+	maxColumns int = 4
 )
 
 var (
@@ -55,21 +57,21 @@ var (
 
 	// Green
 	whAliveModel = lipgloss.NewStyle().
-			Width(15).
+			Width(20).
 			Height(5).
 			Align(lipgloss.Center).
 			BorderStyle(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("#3ba55c"))
 	// Red
 	whDeadModel = lipgloss.NewStyle().
-			Width(15).
+			Width(20).
 			Height(5).
 			Align(lipgloss.Center).
 			BorderStyle(lipgloss.DoubleBorder()).
 			BorderForeground(lipgloss.Color("#ab0c25"))
 	// Purple-ish
 	whRatelimitModel = lipgloss.NewStyle().
-				Width(15).
+				Width(20).
 				Height(5).
 				Align(lipgloss.Center).
 				BorderStyle(lipgloss.DoubleBorder()).
@@ -79,8 +81,15 @@ var (
 	shouldSpam = false
 )
 
+type WOwner struct {
+	Id       string `json:"id"`
+	Username string `json:"username"`
+	Discrim  string `json:"discriminator"`
+}
+
 type Webhook struct {
 	Name        string
+	Owner       WOwner
 	Alive       bool
 	Url         string
 	TotalSent   int
@@ -113,6 +122,7 @@ type WebhookData struct {
 type WebhookInfo struct {
 	After float64 `json:"retry_after"`
 	Name  string  `json:"name"`
+	Owner WOwner  `json:"user"`
 }
 
 type PModel struct {
@@ -263,6 +273,7 @@ func executeWebhooks() {
 					}
 
 					webhook.Name = whinfo.Name
+					webhook.Owner = whinfo.Owner
 				}
 
 				postBody, err := json.Marshal(spamMessage)
@@ -364,7 +375,7 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					for _, v := range strings.Split(whFileData, "\n") {
 						webhooks = append(webhooks, Webhook{
 							Alive:       true,
-							Url:         v,
+							Url:         strings.Trim(v, "\n\t\r"),
 							TotalSent:   0,
 							TotalMissed: 0,
 						})
@@ -464,30 +475,43 @@ func (m PModel) View() string {
 			executeWebhooks()
 		}
 
-		var secondary []string
+		// I feel like I could do a simple calculation to avoid having to grow it in the loop
+		displayRows := make([][]string, 1)
 
 		aliveHooks := 0
 		deadHooks := 0
 		limitedHooks := 0
+
+		totalRows := 0
+		tempIndex := 0
 		for _, wh := range webhooks {
-			// I feel like I could simplify this a bit
 			if wh.Alive {
 				aliveHooks++
 				if wh.Ratelimit > 0 {
-					secondary = append(secondary, whRatelimitModel.Render(fmt.Sprintf("%s\n\n%s\nSent: %d\nMissed: %d\nTimeout: %.2f", m.spinner.View(), wh.Name, wh.TotalSent, wh.TotalMissed, wh.Ratelimit)))
+					displayRows[totalRows] = append(displayRows[totalRows], whRatelimitModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d\nTimeout: %.2f", m.spinner.View(), wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent, wh.Ratelimit)))
 					limitedHooks++
 				} else {
-					secondary = append(secondary, whAliveModel.Render(fmt.Sprintf("%s\n\n%s\nSent: %d\nMissed: %d", m.spinner.View(), wh.Name, wh.TotalSent, wh.TotalMissed)))
+					displayRows[totalRows] = append(displayRows[totalRows], whAliveModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d", m.spinner.View(), wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent)))
 				}
 			} else {
 				deadHooks++
-				secondary = append(secondary, whDeadModel.Render(fmt.Sprintf("%s\n\n%s\nSent: %d\nMissed: %d", "DELETED", wh.Name, wh.TotalSent, wh.TotalMissed)))
+				displayRows[totalRows] = append(displayRows[totalRows], whDeadModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d", "DELETED", wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent)))
 			}
+
+			if tempIndex >= maxColumns {
+				displayRows = append(displayRows, make([]string, maxColumns))
+				tempIndex = 0
+				totalRows++
+				continue
+			}
+			tempIndex++
 		}
+		body := colBanner(fmt.Sprintf("[!] Spamming | %d total | %d alive | %d dead/deleted | %d ratelimited\n\n", len(webhooks), aliveHooks, deadHooks, limitedHooks))
 
-		body := colBanner(fmt.Sprintf("[!] Spamming | %d total | %d alive | %d dead | %d ratelimited\n\n", len(webhooks), aliveHooks, deadHooks, limitedHooks))
-
-		body += lipgloss.JoinHorizontal(lipgloss.Top, secondary...)
+		for _, row := range displayRows {
+			body += lipgloss.JoinHorizontal(lipgloss.Top, row...)
+			body += "\n"
+		}
 
 		body += "\n\n" + colInfo("(i) Press ESCAPE to exit.")
 		return body
@@ -505,7 +529,7 @@ func main() {
 	}
 	defer restoreConsole()
 
-	termenv.DefaultOutput().SetWindowTitle("Aether's MultiWebhook Spammer v2")
+	termenv.DefaultOutput().SetWindowTitle("Aether's MultiWebhook Spammer v2.2")
 
 	p := tea.NewProgram(setupOptions(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
