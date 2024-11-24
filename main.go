@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,11 +33,12 @@ var (
 	whRegex = regexp.MustCompile(`(?i)^.*(discord|discordapp)\.com\/api\/webhooks\/([\d]+)\/([a-z0-9_-]+)$`)
 
 	// STYLING
-	color      = termenv.EnvColorProfile().Color
-	colBanner  = termenv.Style{}.Foreground(color("#da8f1b")).Italic().Styled
-	colDefault = termenv.Style{}.Foreground(color("15")).Styled
-	colInfo    = termenv.Style{}.Foreground(color("8")).Styled
-	striked    = termenv.Style{}.CrossOut().Styled
+	color           = termenv.EnvColorProfile().Color
+	colOrange       = termenv.Style{}.Foreground(color("#da8f1b")).Styled
+	colOrangeItalic = termenv.Style{}.Foreground(color("#da8f1b")).Italic().Styled
+	colDefault      = termenv.Style{}.Foreground(color("15")).Styled
+	colInfo         = termenv.Style{}.Foreground(color("8")).Styled
+	colRedStriked   = termenv.Style{}.Foreground(color("9")).CrossOut().Styled
 
 	webhooks    = []Webhook{}
 	spamMessage *WebhookData
@@ -44,7 +46,7 @@ var (
 	whFileExists = true
 	whFileData   string
 
-	aeBanner = colBanner("       db                             88                                   \n" +
+	aeBanner = colOrangeItalic("       db                             88                                   \n" +
 		"      d88b                     ,d     88                                   \n" +
 		"     d8'`8b                    88     88                                   \n" +
 		"    d8'  `8b      ,adPPYba,  MM88MMM  88,dPPYba,    ,adPPYba,  8b,dPPYba,  \n" +
@@ -84,7 +86,6 @@ var (
 type WOwner struct {
 	Id       string `json:"id"`
 	Username string `json:"username"`
-	Discrim  string `json:"discriminator"`
 }
 
 type Webhook struct {
@@ -122,14 +123,14 @@ type WebhookData struct {
 type WebhookInfo struct {
 	After float64 `json:"retry_after"`
 	Name  string  `json:"name"`
-	Owner WOwner  `json:"user"`
+	Owner WOwner  `json:"user,omitempty"`
 }
 
-type PModel struct {
-	choices  []string
-	cursor   int
-	textarea textarea.Model
-	spinner  spinner.Model
+type UIModel struct {
+	Choices  []string
+	Cursor   int
+	TextArea textarea.Model
+	Spinner  spinner.Model
 }
 
 func init() {
@@ -141,10 +142,10 @@ func init() {
 				Title:       "+ A E T H E R +",
 				Description: "Get spammed lol",
 				Image: WImage{
-					URL: "https://cdn.discordapp.com/attachments/1036756732497637506/1055141759459532800/Fj_KV71XEAQOfDl.jpg",
+					URL: "https://yiffing.zone/shiba.png",
 				},
 				Footer: WFooter{
-					IconURL: "https://cdn.discordapp.com/attachments/832763964558802984/891043235915526195/IidUDunEiBNEoe.png",
+					IconURL: "https://yiffing.zone/shiba.png",
 					Text:    "MWS by: github.com/imAETHER",
 				},
 				Color: 14194190,
@@ -189,16 +190,16 @@ func init() {
 	whFileData = string(b)
 }
 
-func setupOptions() PModel {
+func setupOptions() UIModel {
 	choice2 := "Load from file (webhooks.txt)"
 	if !whFileExists {
-		choice2 = striked(choice2) + " Not found!"
+		choice2 = colRedStriked(choice2) + " Not found."
 	}
 
 	// for ScreenManual
 	txtarea := textarea.New()
 	txtarea.SetHeight(11)
-	txtarea.SetWidth(130)
+	txtarea.SetWidth(140)
 	txtarea.CharLimit = 0
 	txtarea.Placeholder = "https://discord.com/api/webhooks..."
 
@@ -207,15 +208,11 @@ func setupOptions() PModel {
 	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 	spin.Spinner = spinner.Points
 
-	return PModel{
-		choices:  []string{"Manual Input (slow)", choice2},
-		textarea: txtarea,
-		spinner:  spin,
+	return UIModel{
+		Choices:  []string{"Manual Input", choice2},
+		TextArea: txtarea,
+		Spinner:  spin,
 	}
-}
-
-func (m PModel) Init() tea.Cmd {
-	return m.spinner.Tick
 }
 
 func executeWebhooks() {
@@ -336,7 +333,11 @@ func executeWebhooks() {
 	}
 }
 
-func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m UIModel) Init() tea.Cmd {
+	return m.Spinner.Tick
+}
+
+func (m UIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
@@ -353,17 +354,17 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 
 			case "up", "w":
-				if m.cursor > 0 {
-					m.cursor--
+				if m.Cursor > 0 {
+					m.Cursor--
 				}
 
 			case "down", "s":
-				if m.cursor < len(m.choices)-1 {
-					m.cursor++
+				if m.Cursor < len(m.Choices)-1 {
+					m.Cursor++
 				}
 
 			case "enter":
-				switch m.cursor {
+				switch m.Cursor {
 				case 0:
 					currentScreen = ScreenManual
 				case 1: // Load from file
@@ -372,7 +373,9 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 
 					// Add all the webhooks
-					for _, v := range strings.Split(whFileData, "\n") {
+					entries := strings.Split(whFileData, "\n")
+					slices.Sort(entries)
+					for _, v := range slices.Compact(entries) {
 						webhooks = append(webhooks, Webhook{
 							Alive:       true,
 							Url:         strings.Trim(v, "\n\t\r"),
@@ -384,18 +387,20 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					currentScreen = ScreenSpam
 				}
 			}
-			// Manual webhook input
-		case ScreenManual:
+		case ScreenManual: // Manual webhook input
 			shouldSpam = false
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "ctrl+s":
-				if m.textarea.Focused() {
-					m.textarea.Blur()
+				if m.TextArea.Focused() {
+					m.TextArea.Blur()
 				}
 
-				for _, v := range strings.Split(m.textarea.Value(), "\n") {
+				// removing dups
+				entries := strings.Split(m.TextArea.Value(), "\n")
+				slices.Sort(entries)
+				for _, v := range slices.Compact(entries) {
 					webhooks = append(webhooks, Webhook{
 						Alive:       true,
 						Url:         v,
@@ -407,15 +412,15 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				currentScreen = ScreenSpam
 			case "esc":
 				currentScreen = ScreenMain
-				m.textarea.SetValue("")
+				m.TextArea.SetValue("")
 			default:
-				if !m.textarea.Focused() {
-					cmd = m.textarea.Focus()
+				if !m.TextArea.Focused() {
+					cmd = m.TextArea.Focus()
 					cmds = append(cmds, cmd)
 				}
 			}
 
-			m.textarea, cmd = m.textarea.Update(msg)
+			m.TextArea, cmd = m.TextArea.Update(msg)
 
 			cmds = append(cmds, cmd)
 			return m, tea.Batch(cmds...)
@@ -435,14 +440,14 @@ func (m PModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case spinner.TickMsg:
-		m.spinner, cmd = m.spinner.Update(msg)
+		m.Spinner, cmd = m.Spinner.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
 }
 
-func (m PModel) View() string {
+func (m UIModel) View() string {
 	var body string
 
 	switch currentScreen {
@@ -450,9 +455,9 @@ func (m PModel) View() string {
 		body := aeBanner
 
 		// Iterate over our choices
-		for i, choice := range m.choices {
+		for i, choice := range m.Choices {
 			cursor := " "
-			if m.cursor == i {
+			if m.Cursor == i {
 				cursor = ">"
 			}
 
@@ -463,11 +468,11 @@ func (m PModel) View() string {
 		body += "\n" + colInfo("(i) Press CTRL + C to exit.")
 		return body
 	case ScreenManual:
-		body := colBanner("Paste your webhooks here, press ENTER for a new line")
+		body := colOrangeItalic("Paste your webhooks here, press ENTER for a new line")
 		body += "\n\n"
-		body += m.textarea.View()
+		body += m.TextArea.View()
 
-		body += "\n\n" + colInfo("(i) Press CTRL+S to save & spam, or ESCAPE to discard.")
+		body += "\n\n" + colInfo("(i) Press CTRL + S to save and spam, or ESCAPE to discard.")
 		return body
 	case ScreenSpam:
 		shouldSpam = true
@@ -485,17 +490,23 @@ func (m PModel) View() string {
 		totalRows := 0
 		tempIndex := 0
 		for _, wh := range webhooks {
+			// Incase discord wants to re-add the webhook owner field
+			ownerInfo := ""
+			if wh.Owner.Id != "" {
+				ownerInfo = fmt.Sprintf("Owner: @%s\n\n", wh.Owner.Username)
+			}
+
 			if wh.Alive {
 				aliveHooks++
 				if wh.Ratelimit > 0 {
-					displayRows[totalRows] = append(displayRows[totalRows], whRatelimitModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d\nTimeout: %.2f", m.spinner.View(), wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent, wh.Ratelimit)))
+					displayRows[totalRows] = append(displayRows[totalRows], whRatelimitModel.Render(fmt.Sprintf("%s\n\n%s\n\n%sSent: %d\nTimeout: %.2f", m.Spinner.View(), wh.Name, ownerInfo, wh.TotalSent, wh.Ratelimit)))
 					limitedHooks++
 				} else {
-					displayRows[totalRows] = append(displayRows[totalRows], whAliveModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d", m.spinner.View(), wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent)))
+					displayRows[totalRows] = append(displayRows[totalRows], whAliveModel.Render(fmt.Sprintf("%s\n\n%s\n\n%sSent: %d", m.Spinner.View(), wh.Name, ownerInfo, wh.TotalSent)))
 				}
 			} else {
 				deadHooks++
-				displayRows[totalRows] = append(displayRows[totalRows], whDeadModel.Render(fmt.Sprintf("%s\n\n%s\n\nOwner: %s#%s\n\nSent: %d", "DELETED", wh.Name, wh.Owner.Username, wh.Owner.Discrim, wh.TotalSent)))
+				displayRows[totalRows] = append(displayRows[totalRows], whDeadModel.Render(fmt.Sprintf("%s\n\n%s\n\n%sSent: %d", "DELETED", wh.Name, ownerInfo, wh.TotalSent)))
 			}
 
 			if tempIndex >= maxColumns {
@@ -506,7 +517,7 @@ func (m PModel) View() string {
 			}
 			tempIndex++
 		}
-		body := colBanner(fmt.Sprintf("[!] Spamming | %d total | %d alive | %d dead/deleted | %d ratelimited\n\n", len(webhooks), aliveHooks, deadHooks, limitedHooks))
+		body := colOrange(fmt.Sprintf("[!] Spamming - %d total [ %d alive | %d invalid/deleted | %d ratelimited ]\n\n", len(webhooks), aliveHooks, deadHooks, limitedHooks))
 
 		for _, row := range displayRows {
 			body += lipgloss.JoinHorizontal(lipgloss.Top, row...)
